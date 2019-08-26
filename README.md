@@ -387,3 +387,9 @@ result = pw.get_result()
 * [PyWren for IBM Cloud on CODAIT](https://developer.ibm.com/code/open/centers/codait/projects/pywren/)
 * [Industrial project in Technion on PyWren-IBM](http://www.cs.technion.ac.il/~cs234313/projects_sites/W19/04/site/)
 * [Serverless data analytics in the IBM Cloud](https://dl.acm.org/citation.cfm?id=3284029) - Proceedings of the 19th International Middleware Conference (Industry)
+
+
+<!-- Acknowledgements -->
+# Acknowledgements
+
+This work has been supported by the EU H2020 project CLASS, contract #780622.
