@@ -126,7 +126,7 @@ class FunctionInvoker:
         # do the invocation
         start = time.time()
         compute_handler = random.choice(self.compute_handlers)
-        import pdb;pdb.set_trace()
+#        import pdb;pdb.set_trace()
         activation_id = compute_handler.invoke(job.runtime_name, job.runtime_memory, payload)
         roundtrip = time.time() - start
         resp_time = format(round(roundtrip, 3), '.3f')

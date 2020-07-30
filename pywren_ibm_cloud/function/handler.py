@@ -131,7 +131,7 @@ def function_handler(event):
         handler_conn, jobrunner_conn = Pipe()
         jobrunner = JobRunner(jobrunner_config, jobrunner_conn, internal_storage)
         logger.debug('Starting JobRunner process')
-        local_execution = strtobool(os.environ.get('__PW_LOCAL_EXECUTION', 'False'))
+        local_execution = strtobool(os.environ.get('__PW_LOCAL_EXECUTION', 'True'))
         jrp = Thread(target=jobrunner.run) if local_execution else Process(target=jobrunner.run)
         jrp.start()
 

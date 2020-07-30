@@ -49,6 +49,30 @@ PyWren for IBM Cloud provides great value for the variety of uses cases, like pr
    print(pw.get_result())
    ```
 
+## Dataclay runtime
+1. Copy dataclay stubs and cfgfiles to current directory
+2. Build Docker image with Dataclay
+   ```bash
+   $ docker build -t dataclay_runtime:2.1 -f pywren-ibm-cloud/runtime/ibm_cf/Dockerfile.dataclay37 .
+   ```
+3. Create Pywren runtime. Currently only Cloud Functions backend supported
+   ```bash
+   $ pywren-ibm-cloud runtime create dataclay_runtime:2.1
+   ```
+4. When calling pywren executor with Map function, use extra_env to initialize dataclay
+   ```python
+   ...
+   pw = pywren.function_executor()
+   pw.map(traj_pred_v2_wrapper, idstuples, extra_env = {'PRE_RUN': 'dataclay.api.init'})
+   ...
+   ```
+
+## Runtime optimizations
+   This release contains multiple pywren runtime optimizations. It is required to set following environment variable to point to some local temporary folder, e.g.
+   ```bash
+   export PYWREN_TEMP_FOLDER=/home/kpavel/pywren-ibm-cloud
+   ```
+
 ## How to use PyWren for IBM Cloud
 
 The primary object in PyWren is the executor. The standard way to get everything set up is to import `pywren_ibm_cloud`, and call one of the available functions to get a [ready-to-use executor](docs/api-details.md#executor).

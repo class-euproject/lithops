@@ -392,7 +392,7 @@ class FunctionExecutor:
 
         return fs_done, fs_notdone
 
-    def get_result(self, fs=None, throw_except=True, timeout=None, THREADPOOL_SIZE=128, WAIT_DUR_SEC=1):
+    def get_result(self, fs=None, throw_except=True, timeout=None, download_results=True, THREADPOOL_SIZE=128, WAIT_DUR_SEC=1):
         """
         For getting the results from all function activations
 
@@ -406,7 +406,7 @@ class FunctionExecutor:
         :return: The result of the future/s
         """
         fs_done, unused_fs_notdone = self.wait(fs=fs, throw_except=throw_except,
-                                               timeout=timeout, download_results=True,
+                                               timeout=timeout, download_results=download_results,
                                                THREADPOOL_SIZE=THREADPOOL_SIZE,
                                                WAIT_DUR_SEC=WAIT_DUR_SEC)
         result = []
