@@ -1,8 +1,8 @@
-<h1><p align="center"> PyWren for IBM Cloud </p></h1>
+<h1><p align="center"> PyWren with dataClay support </p></h1>
 
-### What is PyWren
+### Introduction
 
-[PyWren](https://github.com/pywren/pywren) is an open source project whose goals are massively scaling the execution of Python code and its dependencies on serverless computing platforms and monitoring the results. PyWren delivers the user’s code into the serverless platform without requiring knowledge of how functions are invoked and run.
+[PyWren](https://github.com/pywren/pywren) is an open source project whose goals are massively scaling the execution of Python code and its dependencies on serverless computing platforms and monitoring the results. PyWren delivers the user’s code into the serverless platform without requiring knowledge of how functions are invoked and run. In the context of the CLASS project, we have integrated PyWren with support for [dataClay](https://www.bsc.es/research-and-development/software-and-apps/software-list/dataclay), which allows PyWren to perform map/reduce operations on data from dataClay. This release of PyWren has been further optimized with new optimizations, such as passing the map function inside the worker's docker image instead of using pickle, which can significantly improve the end-to-end computation latency for repeating computations. 
 
 ### PyWren and IBM Cloud
 
