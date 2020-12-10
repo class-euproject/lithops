@@ -46,7 +46,7 @@ class IBMCloudObjectStorageBackend:
             api_key = self.ibm_cos_config.get('iam_api_key')
             api_key_type = 'IAM'
 
-        service_endpoint = self.ibm_cos_config.get('endpoint').replace('http:', 'https:')
+        service_endpoint = self.ibm_cos_config.get('endpoint')#.replace('http:', 'https:')
         if self.is_lithops_worker and 'private_endpoint' in self.ibm_cos_config:
             service_endpoint = self.ibm_cos_config.get('private_endpoint')
             if api_key:

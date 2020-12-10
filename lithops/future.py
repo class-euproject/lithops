@@ -42,7 +42,7 @@ class ResponseFuture:
         Futures = "Futures"
         Error = "Error"
 
-    GET_RESULT_SLEEP_SECS = 1
+    GET_RESULT_SLEEP_SECS = 0.1
     GET_RESULT_MAX_RETRIES = 10
 
     def __init__(self, call_id, job, job_metadata, storage_config):
