@@ -117,7 +117,7 @@ class ServerlessInvoker:
         """
         job = SimpleNamespace(**job_description)
 
-        log_msg = ('ExecutorID {} | JobID {} - Starting function '
+        log_msg = ('ExecutorID {} | JobID {} - 1Starting function '
                    'invocation: {}()  - Total: {} activations'.
                    format(job.executor_id, job.job_id,
                           job.function_name, job.total_calls))

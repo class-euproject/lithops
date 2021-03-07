@@ -60,6 +60,7 @@ class stats:
 class JobRunner:
 
     def __init__(self, jr_config, jobrunner_conn, internal_storage):
+        logger.info(f"in __init__")
         self.jr_config = jr_config
         self.jobrunner_conn = jobrunner_conn
         self.internal_storage = internal_storage
@@ -81,6 +82,7 @@ class JobRunner:
 
         mode = self.lithops_config['lithops']['mode']
         self.customized_runtime = self.lithops_config[mode].get('customized_runtime', False)
+        logger.info(f"out __init__")
 
     def _get_function_and_modules(self):
         """
@@ -244,6 +246,7 @@ class JobRunner:
     # Decorator to execute pre-run and post-run functions provided via environment variables
     def prepost(func):
         def call(envVar):
+            logger.info(f"in prepost {envVar}")
             if envVar in os.environ:
                 method = locate(os.environ[envVar])
                 method()

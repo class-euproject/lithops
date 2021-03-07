@@ -203,16 +203,20 @@ class OpenWhiskClient:
 
         try:
             if is_ow_action:
+                print('before self.session.post')
                 resp = self.session.post(url, json=payload, verify=False)
+                print('after self.session.post')
                 resp_status = resp.status_code
                 data = resp.json()
             else:
                 ctx = ssl._create_unverified_context()
                 conn = http.client.HTTPSConnection(parsed_url.netloc, context=ctx)
+                print('conn.request')
                 conn.request("POST", parsed_url.geturl(),
                              body=json.dumps(payload),
                              headers=self.headers)
                 resp = conn.getresponse()
+                print('after conn.getresponse')
                 resp_status = resp.status
                 data = json.loads(resp.read().decode("utf-8"))
                 conn.close()

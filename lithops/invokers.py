@@ -284,6 +284,7 @@ class ServerlessInvoker(Invoker):
 
         # do the invocation
         start = time.time()
+        print(f'self.compute_handler.invoke {call_id}')
         activation_id = self.compute_handler.invoke(job.runtime_name, job.runtime_memory, payload)
         roundtrip = time.time() - start
         resp_time = format(round(roundtrip, 3), '.3f')
@@ -351,7 +352,7 @@ class ServerlessInvoker(Invoker):
             sys.stdout = open(os.devnull, 'w')
             self.select_runtime(job.job_id, self.REMOTE_INVOKER_MEMORY)
             sys.stdout = old_stdout
-            log_msg = ('ExecutorID {} | JobID {} - Starting function '
+            log_msg = ('ExecutorID {} | JobID {} - 2Starting function '
                        'invocation: {}() - Total: {} activations'
                        .format(job.executor_id, job.job_id,
                                job.function_name, job.total_calls))
@@ -373,7 +374,7 @@ class ServerlessInvoker(Invoker):
                     self.running_flag.value = 1
                     self._start_invoker_process()
 
-                log_msg = ('ExecutorID {} | JobID {} - Starting function '
+                log_msg = ('ExecutorID {} | JobID {} - 3Starting function '
                            'invocation: {}() - Total: {} activations'
                            .format(job.executor_id, job.job_id,
                                    job.function_name, job.total_calls))
@@ -400,6 +401,7 @@ class ServerlessInvoker(Invoker):
                     executor = ThreadPoolExecutor(job.invoke_pool_threads)
                     for i in callids_to_invoke_direct:
                         call_id = "{:05d}".format(i)
+                        print(f'Executor submit {i}')
                         future = executor.submit(self._invoke, job, call_id)
                         future.add_done_callback(_callback)
                     time.sleep(0.1)

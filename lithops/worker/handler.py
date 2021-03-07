@@ -78,6 +78,8 @@ def function_handler(event):
     storage_config = extract_storage_config(config)
     internal_storage = InternalStorage(storage_config)
 
+    logger.info("After InternalStorage(storage_config)")
+
     call_status = CallStatus(config, internal_storage)
     call_status.response['host_submit_tstamp'] = event['host_submit_tstamp']
     call_status.response['worker_start_tstamp'] = start_tstamp
@@ -88,6 +90,8 @@ def function_handler(event):
         'executor_id': executor_id,
         'activation_id': os.environ.get('__LITHOPS_ACTIVATION_ID')
     }
+
+    logger.info("before call_status.response.update")
     call_status.response.update(context_dict)
 
     show_memory_peak = strtobool(os.environ.get('SHOW_MEMORY_PEAK', 'False'))
@@ -99,6 +103,7 @@ def function_handler(event):
             raise RuntimeError('HANDLER', msg)
 
         # send init status event
+        logger.info("before call_status.send")
         call_status.send('__init__')
 
         # call_status.response['free_disk_bytes'] = free_disk_space("/tmp")
@@ -106,6 +111,8 @@ def function_handler(event):
                       '__LITHOPS_SESSION_ID': '-'.join([job_key, call_id]),
                       'PYTHONPATH': "{}:{}".format(os.getcwd(), LITHOPS_LIBS_PATH)}
         os.environ.update(custom_env)
+
+        logger.info("After os.environ.update")
 
         jobrunner_stats_dir = os.path.join(LITHOPS_TEMP_DIR, storage_config['bucket'],
                                            JOBS_PREFIX, job_key, call_id)
@@ -122,20 +129,25 @@ def function_handler(event):
                             'output_key': create_output_key(JOBS_PREFIX, executor_id, job_id, call_id),
                             'stats_filename': jobrunner_stats_filename}
 
+        logger.info("before show_memory_peak")
         if show_memory_peak:
             mm_handler_conn, mm_conn = Pipe()
             memory_monitor = Thread(target=memory_monitor_worker, args=(mm_conn, ))
             memory_monitor.start()
 
         handler_conn, jobrunner_conn = Pipe()
+        logger.info("before JobRunner(jobrunner_config, jobrunner_conn, internal_storage)")
         jobrunner = JobRunner(jobrunner_config, jobrunner_conn, internal_storage)
-        logger.debug('Starting JobRunner process')
+
+        logger.info('Starting JobRunner process')
         local_execution = strtobool(os.environ.get('__LITHOPS_LOCAL_EXECUTION', 'False'))
+        logger.info(f'local_execution: {local_execution}')
         jrp = Thread(target=jobrunner.run) if local_execution else Process(target=jobrunner.run)
         jrp.start()
+        logger.info('after jrp.start')
 
         jrp.join(execution_timeout)
-        logger.debug('JobRunner process finished')
+        logger.info('JobRunner process finished')
 
         if jrp.is_alive():
             # If process is still alive after jr.join(job_max_runtime), kill it
