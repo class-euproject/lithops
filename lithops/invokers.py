@@ -284,8 +284,9 @@ class ServerlessInvoker(Invoker):
 
         # do the invocation
         start = time.time()
-        print(f'self.compute_handler.invoke {call_id}')
+        logger.info(f' A_INVOKE_CALL_{call_id} ')
         activation_id = self.compute_handler.invoke(job.runtime_name, job.runtime_memory, payload)
+        logger.info(f' A_INVOKE_BACK_{call_id}_{activation_id} ')
         roundtrip = time.time() - start
         resp_time = format(round(roundtrip, 3), '.3f')
 
@@ -401,7 +402,7 @@ class ServerlessInvoker(Invoker):
                     executor = ThreadPoolExecutor(job.invoke_pool_threads)
                     for i in callids_to_invoke_direct:
                         call_id = "{:05d}".format(i)
-                        print(f'Executor submit {i}')
+#                        print(f'Executor submit {i}')
                         future = executor.submit(self._invoke, job, call_id)
                         future.add_done_callback(_callback)
                     time.sleep(0.1)
