@@ -267,10 +267,12 @@ def _create_job(config, internal_storage, executor_id, job_id, func,
     # Upload data
     data_key = create_agg_data_key(JOBS_PREFIX, executor_id, job_id)
     job.data_key = data_key
+#    import pdb;pdb.set_trace()
     data_bytes, data_ranges = utils.agg_data(data_strs)
     job.data_ranges = data_ranges
     data_upload_start = time.time()
     internal_storage.put_data(data_key, data_bytes)
+    logger.info("Finished uploading data")
     data_upload_end = time.time()
 
     host_job_meta['host_data_upload_time'] = round(data_upload_end-data_upload_start, 6)
@@ -280,10 +282,11 @@ def _create_job(config, internal_storage, executor_id, job_id, func,
     if config[mode].get('customized_runtime'):
         # Prepare function and modules locally to store in the runtime image later
         function_file = func.__code__.co_filename
-        function_hash = hashlib.md5(open(function_file,'rb').read()).hexdigest()[:16]
-        mod_hash = hashlib.md5(repr(sorted(mod_paths)).encode('utf-8')).hexdigest()[:16]
+        uuid = hashlib.md5(open(function_file,'rb').read()).hexdigest()[:16]
+#        function_hash = hashlib.md5(open(function_file,'rb').read()).hexdigest()[:16]
+#        mod_hash = hashlib.md5(repr(sorted(mod_paths)).encode('utf-8')).hexdigest()[:16]
 
-        uuid = f'{function_hash}{mod_hash}'
+#        uuid = f'{function_hash}{mod_hash}'
         func_key = create_func_key(JOBS_PREFIX, uuid, "")
 
         _store_func_and_modules(func_key, func_str, module_data)
@@ -292,6 +295,8 @@ def _create_job(config, internal_storage, executor_id, job_id, func,
     else:
         func_key = create_func_key(JOBS_PREFIX, executor_id, job_id)
         internal_storage.put_func(func_key, func_module_str)
+
+    logger.info("Finished uploading function and data")
     
     job.func_key = func_key
     func_upload_end = time.time()
