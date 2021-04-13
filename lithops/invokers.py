@@ -35,6 +35,8 @@ from lithops.storage.utils import create_job_key
 from lithops.constants import LOGGER_LEVEL, LITHOPS_TEMP_DIR
 from lithops.util.metrics import PrometheusExporter
 
+from lithops.utils import b64str_to_bytes
+
 logger = logging.getLogger(__name__)
 
 
@@ -273,7 +275,8 @@ class ServerlessInvoker(Invoker):
                    'data_key': job.data_key,
                    'extra_env': job.extra_env,
                    'execution_timeout': job.execution_timeout,
-                   'data_byte_range': job.data_ranges[int(call_id)],
+                   'data_byte_range': job.data_ranges[int(call_id)] if job.data_ranges else -1,
+                   'data_object': job.data_objects[int(call_id)] if job.data_objects else None,
                    'executor_id': job.executor_id,
                    'job_id': job.job_id,
                    'call_id': call_id,
@@ -327,6 +330,7 @@ class ServerlessInvoker(Invoker):
         """
         Run a job described in job_description
         """
+        logger.info("in invoker.run")
 
         job.runtime_name = self.runtime_name
 
@@ -486,6 +490,38 @@ class CustomizedRuntimeInvoker(ServerlessInvoker):
         self._extend_runtime(job)
         return super().run(job)
 
+    def _store_func_and_modules(self, func_key, func_str, module_data):
+        # save function
+        func_path = '/'.join([LITHOPS_TEMP_DIR, func_key])
+        os.makedirs(os.path.dirname(func_path), exist_ok=True)
+        with open(func_path, "wb") as f:
+            f.write(func_str)
+
+        if module_data:
+            logger.debug("Writing Function dependencies to local disk")
+
+            modules_path = '/'.join([os.path.dirname(func_path), 'modules'])
+
+            for m_filename, m_data in module_data.items():
+                m_path = os.path.dirname(m_filename)
+
+                if len(m_path) > 0 and m_path[0] == "/":
+                    m_path = m_path[1:]
+                to_make = os.path.join(modules_path, m_path)
+                try:
+                    os.makedirs(to_make)
+                except OSError as e:
+                    if e.errno == 17:
+                        pass
+                    else:
+                        raise e
+                full_filename = os.path.join(to_make, os.path.basename(m_filename))
+
+                with open(full_filename, 'wb') as fid:
+                    fid.write(b64str_to_bytes(m_data))
+
+        logger.debug("Finished storing function and modules")
+
     # If runtime not exists yet, build unique docker image and register runtime
     def _extend_runtime(self, job):
         runtime_memory = self.config['serverless']['runtime_memory']
@@ -493,7 +529,7 @@ class CustomizedRuntimeInvoker(ServerlessInvoker):
 
         base_docker_image = self.runtime_name
         uuid = job.ext_runtime_uuid
-        ext_runtime_name = "{}:{}".format(base_docker_image.split(":")[0], uuid)
+        ext_runtime_name = "{}:{}".format(base_docker_image.rsplit(":", 1)[0], uuid)
 
         # update job with new extended runtime name
         self.runtime_name = ext_runtime_name
@@ -505,24 +541,47 @@ class CustomizedRuntimeInvoker(ServerlessInvoker):
             timeout = self.config['lithops']['runtime_timeout']
             logger.debug('Creating runtime: {}, memory: {}MB'.format(ext_runtime_name, runtime_memory))
 
-            runtime_temorary_directory = '/'.join([LITHOPS_TEMP_DIR, os.path.dirname(job.func_key)])
-            modules_path = '/'.join([runtime_temorary_directory, 'modules'])
+            def _docker_image_exist():
+                import requests
 
-            ext_docker_file = '/'.join([runtime_temorary_directory, "Dockerfile"])
+                base_docker_image_split = base_docker_image.rsplit(":", 1)[0].split('/')
 
-            # Generate Dockerfile extended with function dependencies and function
-            with open(ext_docker_file, 'w') as df:
-                df.write('\n'.join([
-                    'FROM {}'.format(base_docker_image),
-                    'ENV PYTHONPATH={}:${}'.format(modules_path,'PYTHONPATH'), # set python path to point to dependencies folder
-                    'COPY . {}'.format(runtime_temorary_directory)
-                ]))
+                if len(base_docker_image_split) > 2: #very rough check that its a private registry
+                    registry = f"http://{base_docker_image_split[0]}/v2"#'http://192.168.7.41:5000/v2'
+                    url = f"{registry}/{base_docker_image_split[1]}/{base_docker_image_split[2]}/tags/list"
+                    res = requests.get(url, verify=False)
+                    if res.ok:
+                        tags = res.json().get('tags')
+                        if uuid in tags:
+                            return True
+                else:
+                    registry = 'https://index.docker.io/v1/repositories' #default - docker hub
+                    url = f"{registry}/{base_docker_image_split[1]}/{base_docker_image_split[2]}/tags"
+                    res = requests.get(url, verify=False)
+                    if res.ok:
+                        tags = res.json().get('tags')
+                        return any(tag['name'] == uuid for tag in tags)
 
-            # Build new extended runtime tagged by function hash
-            cwd = os.getcwd()
-            os.chdir(runtime_temorary_directory)
-            self.compute_handler.build_runtime(ext_runtime_name, ext_docker_file)
-            os.chdir(cwd)
+            if not _docker_image_exist():
+                self._store_func_and_modules(*job.customized_runtime_meta)
+                runtime_temorary_directory = '/'.join([LITHOPS_TEMP_DIR, os.path.dirname(job.func_key)])
+                modules_path = '/'.join([runtime_temorary_directory, 'modules'])
+
+                ext_docker_file = '/'.join([runtime_temorary_directory, "Dockerfile"])
+
+                # Generate Dockerfile extended with function dependencies and function
+                with open(ext_docker_file, 'w') as df:
+                    df.write('\n'.join([
+                        'FROM {}'.format(base_docker_image),
+                        'ENV PYTHONPATH={}:${}'.format(modules_path,'PYTHONPATH'), # set python path to point to dependencies folder
+                        'COPY . {}'.format(runtime_temorary_directory)
+                    ]))
+
+                # Build new extended runtime tagged by function hash
+                cwd = os.getcwd()
+                os.chdir(runtime_temorary_directory)
+                self.compute_handler.build_runtime(ext_runtime_name, ext_docker_file)
+                os.chdir(cwd)
 
             runtime_meta = self.compute_handler.create_runtime(ext_runtime_name, runtime_memory, timeout=timeout)
             self.internal_storage.put_runtime_meta(runtime_key, runtime_meta)

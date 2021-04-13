@@ -26,13 +26,12 @@ from lithops.utils import is_object_processing_function, sizeof_fmt
 from lithops.storage.utils import create_func_key, create_agg_data_key
 from lithops.job.serialize import SerializeIndependent, create_module_data
 from lithops.constants import MAX_AGG_DATA_SIZE, JOBS_PREFIX, LOCALHOST,\
-    SERVERLESS, STANDALONE, LITHOPS_TEMP_DIR
+    SERVERLESS, STANDALONE
 from types import SimpleNamespace
 
 import os
 import hashlib
 import inspect
-from lithops.utils import b64str_to_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -127,42 +126,6 @@ def create_reduce_job(config, internal_storage, executor_id, reduce_job_id,
                        execution_timeout=execution_timeout,
                        host_job_meta=host_job_meta)
 
-'''
-stores function and modules in temporary directory to be used later in optimized runtime
-'''
-def _store_func_and_modules(func_key, func_str, module_data):
-    # save function
-    func_path = '/'.join([LITHOPS_TEMP_DIR, func_key])
-    os.makedirs(os.path.dirname(func_path), exist_ok=True)
-    with open(func_path, "wb") as f:
-        f.write(func_str)
-
-    if module_data:
-        logger.debug("Writing Function dependencies to local disk")
-
-        modules_path = '/'.join([os.path.dirname(func_path), 'modules'])
-
-        for m_filename, m_data in module_data.items():
-            m_path = os.path.dirname(m_filename)
-
-            if len(m_path) > 0 and m_path[0] == "/":
-                m_path = m_path[1:]
-            to_make = os.path.join(modules_path, m_path)
-            try:
-                os.makedirs(to_make)
-            except OSError as e:
-                if e.errno == 17:
-                    pass
-                else:
-                    raise e
-            full_filename = os.path.join(to_make, os.path.basename(m_filename))
-
-            with open(full_filename, 'wb') as fid:
-                fid.write(b64str_to_bytes(m_data))
-
-    logger.debug("Finished storing function and modules")
-
-
 def _create_job(config, internal_storage, executor_id, job_id, func,
                 iterdata, runtime_meta, runtime_memory, extra_env,
                 include_modules, exclude_modules, execution_timeout,
@@ -235,7 +198,13 @@ def _create_job(config, internal_storage, executor_id, job_id, func,
     logger.debug('ExecutorID {} | JobID {} - Serializing function and data'.format(executor_id, job_id))
     job_serialize_start = time.time()
     serializer = SerializeIndependent(runtime_meta['preinstalls'])
-    func_and_data_ser, mod_paths = serializer([func] + iterdata, inc_modules, exc_modules)
+
+    func_iterdata = [func]
+    if not config[mode].get('direct_data'):
+        func_iterdata.extend(iterdata)
+
+    func_and_data_ser, mod_paths = serializer(func_iterdata, inc_modules, exc_modules)
+
     data_strs = func_and_data_ser[1:]
     data_size_bytes = sum(len(x) for x in data_strs)
     module_data = create_module_data(mod_paths)
@@ -268,13 +237,19 @@ def _create_job(config, internal_storage, executor_id, job_id, func,
     data_key = create_agg_data_key(JOBS_PREFIX, executor_id, job_id)
     job.data_key = data_key
 #    import pdb;pdb.set_trace()
-    data_bytes, data_ranges = utils.agg_data(data_strs)
-    job.data_ranges = data_ranges
     data_upload_start = time.time()
-    internal_storage.put_data(data_key, data_bytes)
-    logger.info("Finished uploading data")
-    data_upload_end = time.time()
 
+    if not config[mode].get('direct_data'): 
+        data_bytes, data_ranges = utils.agg_data(data_strs)
+        job.data_ranges = data_ranges
+        internal_storage.put_data(data_key, data_bytes)
+    else:
+        job.data_ranges = None
+        job.data_objects = iterdata 
+
+    logger.info("Finished uploading data")
+
+    data_upload_end = time.time()
     host_job_meta['host_data_upload_time'] = round(data_upload_end-data_upload_start, 6)
     func_upload_start = time.time()
 
@@ -289,7 +264,8 @@ def _create_job(config, internal_storage, executor_id, job_id, func,
 #        uuid = f'{function_hash}{mod_hash}'
         func_key = create_func_key(JOBS_PREFIX, uuid, "")
 
-        _store_func_and_modules(func_key, func_str, module_data)
+        job.customized_runtime_meta = (func_key, func_str, module_data)
+#        _store_func_and_modules(func_key, func_str, module_data)
         
         job.ext_runtime_uuid = uuid
     else:

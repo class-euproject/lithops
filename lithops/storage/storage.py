@@ -300,6 +300,7 @@ class InternalStorage:
             logger.debug("Runtime metadata found in local cache")
             with open(filename_local_path, "r") as f:
                 runtime_meta = json.loads(f.read())
+            logger.debug("2untime metadata found in local cache")
             return runtime_meta
         else:
             logger.debug("Runtime metadata not found in local cache. Retrieving it from storage")

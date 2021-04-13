@@ -72,6 +72,7 @@ class JobRunner:
         self.func_key = self.jr_config['func_key']
         self.data_key = self.jr_config['data_key']
         self.data_byte_range = self.jr_config['data_byte_range']
+        self.data_object = self.jr_config['data_object']
         self.output_key = self.jr_config['output_key']
 
         self.stats = stats(self.jr_config['stats_filename'])
@@ -95,6 +96,7 @@ class JobRunner:
             func_obj = self._get_func()
         else:
             func_obj = self.internal_storage.get_func(self.func_key)
+        logger.debug("Getting function and modules download finished")
         loaded_func_all = pickle.loads(func_obj)
         func_download_end_tstamp = time.time()
         self.stats.write('worker_func_download_time', round(func_download_end_tstamp-func_download_start_tstamp, 8))
@@ -276,7 +278,11 @@ class JobRunner:
                 loaded_func_all = self._get_function_and_modules()
                 self._save_modules(loaded_func_all['module_data'])
                 function = self._unpickle_function(loaded_func_all['func'])
-            data = self._load_data()
+
+            if self.data_object:
+                data = self.data_object
+            else:
+                data = self._load_data()
 
             if strtobool(os.environ.get('__LITHOPS_REDUCE_JOB', 'False')):
                 self._wait_futures(data)
@@ -363,6 +369,7 @@ class JobRunner:
                 output_upload_start_tstamp = time.time()
                 logger.info("Storing function result - Size: {}".format(sizeof_fmt(len(pickled_output))))
                 self.internal_storage.put_data(self.output_key, pickled_output)
+                logger.info("Finished storing function result")
                 output_upload_end_tstamp = time.time()
                 self.stats.write("worker_result_upload_time", round(output_upload_end_tstamp - output_upload_start_tstamp, 8))
             self.jobrunner_conn.send("Finished")
