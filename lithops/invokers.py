@@ -276,7 +276,7 @@ class ServerlessInvoker(Invoker):
                    'extra_env': job.extra_env,
                    'execution_timeout': job.execution_timeout,
                    'data_byte_range': job.data_ranges[int(call_id)] if job.data_ranges else -1,
-                   'data_object': job.data_objects[int(call_id)] if job.data_objects else None,
+                   'data_object': job.data_objects[int(call_id)] if hasattr(job, 'data_objects') else None,
                    'executor_id': job.executor_id,
                    'job_id': job.job_id,
                    'call_id': call_id,
@@ -535,6 +535,8 @@ class CustomizedRuntimeInvoker(ServerlessInvoker):
         self.runtime_name = ext_runtime_name
 
         runtime_key = self.compute_handler.get_runtime_key(self.runtime_name, runtime_memory)
+        runtime_meta = None
+#        if self.storage_config['backend'] != "storageless":
         runtime_meta = self.internal_storage.get_runtime_meta(runtime_key)
         
         if not runtime_meta:
@@ -584,6 +586,7 @@ class CustomizedRuntimeInvoker(ServerlessInvoker):
                 os.chdir(cwd)
 
             runtime_meta = self.compute_handler.create_runtime(ext_runtime_name, runtime_memory, timeout=timeout)
+#            if self.storage_config['backend'] != "storageless":
             self.internal_storage.put_runtime_meta(runtime_key, runtime_meta)
         else:
             if not self.log_active:

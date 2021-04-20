@@ -302,7 +302,7 @@ class InternalStorage:
                 runtime_meta = json.loads(f.read())
             logger.debug("2untime metadata found in local cache")
             return runtime_meta
-        else:
+        elif self.backend != 'storageless':
             logger.debug("Runtime metadata not found in local cache. Retrieving it from storage")
             try:
                 obj_key = '/'.join(path).replace('\\', '/')
@@ -334,10 +334,12 @@ class InternalStorage:
         :param runtime_meta metadata
         """
         path = [RUNTIMES_PREFIX, __version__,  key+".meta.json"]
-        obj_key = '/'.join(path).replace('\\', '/')
-        logger.debug("Uploading runtime metadata to: {}://{}/{}"
+
+        if self.backend != 'storageless':
+            obj_key = '/'.join(path).replace('\\', '/')
+            logger.debug("Uploading runtime metadata to: {}://{}/{}"
                      .format(self.backend, self.bucket, obj_key))
-        self.storage.put_object(self.bucket, obj_key, json.dumps(runtime_meta))
+            self.storage.put_object(self.bucket, obj_key, json.dumps(runtime_meta))
 
         if not is_lithops_worker():
             filename_local_path = os.path.join(CACHE_DIR, *path)

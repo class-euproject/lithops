@@ -146,7 +146,8 @@ def default_config(config_data=None, config_overwrite={}):
 
     if config_data['lithops']['mode'] == constants.SERVERLESS:
         if 'storage_bucket' not in config_data['lithops']:
-            raise Exception("storage_bucket is mandatory in "
+            if config_data['lithops'].get('storage') and config_data['lithops'].get('storage') != "storageless":
+                raise Exception("storage_bucket is mandatory in "
                             "lithops section of the configuration")
 
         if constants.SERVERLESS not in config_data or \
@@ -245,8 +246,8 @@ def extract_storage_config(config):
     storage_config = {}
     sb = config['lithops']['storage']
     storage_config['backend'] = sb
-    storage_config['bucket'] = config['lithops']['storage_bucket']
-    storage_config[sb] = config[sb]
+    storage_config['bucket'] = config['lithops'].get('storage_bucket', '')
+    storage_config[sb] = config.get(sb, {})
     storage_config[sb]['user_agent'] = 'lithops/{}'.format(__version__)
 
     if 'storage_region' in config['lithops']:

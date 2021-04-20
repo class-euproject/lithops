@@ -200,7 +200,7 @@ def _create_job(config, internal_storage, executor_id, job_id, func,
     serializer = SerializeIndependent(runtime_meta['preinstalls'])
 
     func_iterdata = [func]
-    if not config[mode].get('direct_data'):
+    if not internal_storage.backend == 'storageless':
         func_iterdata.extend(iterdata)
 
     func_and_data_ser, mod_paths = serializer(func_iterdata, inc_modules, exc_modules)
@@ -239,7 +239,7 @@ def _create_job(config, internal_storage, executor_id, job_id, func,
 #    import pdb;pdb.set_trace()
     data_upload_start = time.time()
 
-    if not config[mode].get('direct_data'): 
+    if not internal_storage.backend == 'storageless': 
         data_bytes, data_ranges = utils.agg_data(data_strs)
         job.data_ranges = data_ranges
         internal_storage.put_data(data_key, data_bytes)
@@ -254,6 +254,7 @@ def _create_job(config, internal_storage, executor_id, job_id, func,
     func_upload_start = time.time()
 
     # Upload function and modules
+    #import pdb;pdb.set_trace()
     if config[mode].get('customized_runtime'):
         # Prepare function and modules locally to store in the runtime image later
         function_file = func.__code__.co_filename

@@ -112,6 +112,7 @@ def function_handler(event):
 
         logger.info("After os.environ.update")
 
+
         jobrunner_stats_dir = os.path.join(LITHOPS_TEMP_DIR, storage_config['bucket'],
                                            JOBS_PREFIX, job_key, call_id)
         os.makedirs(jobrunner_stats_dir, exist_ok=True)
