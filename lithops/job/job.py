@@ -64,7 +64,23 @@ def create_map_job(config, internal_storage, executor_id, job_id, map_function,
         host_job_meta['host_job_create_partitions_time'] = round(time.time()-create_partitions_start, 6)
     # ########
 
-    job = _create_job(config=config,
+    if 'map_func_mod' in runtime_meta:
+        job = _create_fast_job(config=config,
+                      internal_storage=internal_storage,
+                      executor_id=executor_id,
+                      job_id=job_id,
+                      func=map_function,
+                      iterdata=map_iterdata,
+                      runtime_meta=runtime_meta,
+                      runtime_memory=runtime_memory,
+                      extra_env=extra_env,
+                      include_modules=include_modules,
+                      exclude_modules=exclude_modules,
+                      execution_timeout=execution_timeout,
+                      host_job_meta=host_job_meta,
+                      invoke_pool_threads=invoke_pool_threads)
+    else:
+        job = _create_job(config=config,
                       internal_storage=internal_storage,
                       executor_id=executor_id,
                       job_id=job_id,
@@ -125,6 +141,104 @@ def create_reduce_job(config, internal_storage, executor_id, reduce_job_id,
                        exclude_modules=exclude_modules,
                        execution_timeout=execution_timeout,
                        host_job_meta=host_job_meta)
+
+def _create_fast_job(config, internal_storage, executor_id, job_id, func,
+                iterdata, runtime_meta, runtime_memory, extra_env,
+                include_modules, exclude_modules, execution_timeout,
+                host_job_meta, invoke_pool_threads=128):
+    """
+    :param func: the function to map over the data
+    :param iterdata: An iterable of input data
+    :param extra_env: Additional environment variables for CF environment. Default None.
+    :param extra_meta: Additional metadata to pass to CF. Default None.
+    :param remote_invocation: Enable remote invocation. Default False.
+    :param invoke_pool_threads: Number of threads to use to invoke.
+    :param data_all_as_one: upload the data as a single object. Default True
+    :param overwrite_invoke_args: Overwrite other args. Mainly used for testing.
+    :param exclude_modules: Explicitly keep these modules from pickled dependencies.
+    :return: A list with size `len(iterdata)` of futures for each job
+    :rtype:  list of futures.
+    """
+    log_level = logger.getEffectiveLevel() != logging.WARNING
+
+    ext_env = {} if extra_env is None else extra_env.copy()
+    if ext_env:
+        ext_env = utils.convert_bools_to_string(ext_env)
+        logger.debug("Extra environment vars {}".format(ext_env))
+
+    job = SimpleNamespace()
+    job.executor_id = executor_id
+    job.job_id = job_id
+    job.extra_env = ext_env
+    job.execution_timeout = execution_timeout or config['lithops']['execution_timeout']
+    job.function_name = func.__name__
+    job.total_calls = len(iterdata)
+
+    mode = config['lithops']['mode']
+
+
+    if mode == SERVERLESS:
+        job.invoke_pool_threads = invoke_pool_threads
+        job.runtime_memory = runtime_memory or config['serverless']['runtime_memory']
+        job.runtime_timeout = config['serverless']['runtime_timeout']
+        if job.execution_timeout >= job.runtime_timeout:
+            job.execution_timeout = job.runtime_timeout - 5
+
+    elif mode == STANDALONE:
+        job.runtime_memory = None
+        runtime_timeout = config['standalone']['hard_dismantle_timeout']
+        if job.execution_timeout >= runtime_timeout:
+            job.execution_timeout = runtime_timeout - 10
+
+    elif mode == LOCALHOST:
+        job.runtime_memory = None
+        job.runtime_timeout = execution_timeout
+
+    logger.debug('ExecutorID {} | JobID {} - Serializing function and data'.format(executor_id, job_id))
+    log_msg = ('ExecutorID {} | JobID {} - Uploading function and data '.format(executor_id, job_id))
+    logger.info(log_msg)
+    if not log_level:
+        print(log_msg)
+
+    # Upload data
+    data_key = create_agg_data_key(JOBS_PREFIX, executor_id, job_id)
+    job.data_key = data_key
+#    import pdb;pdb.set_trace()
+    data_upload_start = time.time()
+    job.data_ranges = None
+    job.data_objects = iterdata
+
+    logger.info("Finished uploading data")
+
+    data_upload_end = time.time()
+    host_job_meta['host_data_upload_time'] = round(data_upload_end-data_upload_start, 6)
+    func_upload_start = time.time()
+
+    # Upload function and modules
+    function_file = func.__code__.co_filename
+    uuid = hashlib.md5(open(function_file,'rb').read()).hexdigest()[:16]
+    func_key = create_func_key(JOBS_PREFIX, uuid, "")
+
+    job.map_func_meta = {'map_func_mod': runtime_meta['map_func_mod'], 'map_func': runtime_meta['map_func']} 
+
+#        _store_func_and_modules(func_key, func_str, module_data)
+
+    job.ext_runtime_uuid = uuid
+
+    logger.info("Finished uploading function and data")
+
+    job.func_key = func_key
+    func_upload_end = time.time()
+
+    host_job_meta['host_func_upload_time'] = round(func_upload_end - func_upload_start, 6)
+
+    host_job_meta['host_job_created_time'] = round(time.time() - host_job_meta['host_job_create_tstamp'], 6)
+
+    job.metadata = host_job_meta
+
+    return job
+
+
 
 def _create_job(config, internal_storage, executor_id, job_id, func,
                 iterdata, runtime_meta, runtime_memory, extra_env,

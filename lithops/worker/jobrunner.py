@@ -37,6 +37,8 @@ from lithops.constants import TEMP
 from lithops.util.metrics import PrometheusExporter
 from lithops.constants import LITHOPS_TEMP_DIR
 
+import importlib
+
 logger = logging.getLogger(__name__)
 
 
@@ -74,6 +76,7 @@ class JobRunner:
         self.data_byte_range = self.jr_config['data_byte_range']
         self.data_object = self.jr_config['data_object']
         self.output_key = self.jr_config['output_key']
+        self.map_func_meta = self.jr_config['map_func_meta']
 
         self.stats = stats(self.jr_config['stats_filename'])
 
@@ -92,12 +95,18 @@ class JobRunner:
         logger.debug("Getting function and modules")
         func_download_start_tstamp = time.time()
         func_obj = None
-        if self.customized_runtime:
+        loaded_func_all = None
+        if self.map_func_meta:
+            logger.debug(f"IN self.map_func_meta {self.map_func_meta}")
+            func_module = importlib.__import__(self.map_func_meta['map_func_mod'])
+            loaded_func_all = getattr(func_module, self.map_func_meta['map_func'])
+        elif self.customized_runtime:
             func_obj = self._get_func()
+            loaded_func_all = pickle.loads(func_obj)
         else:
             func_obj = self.internal_storage.get_func(self.func_key)
+            loaded_func_all = pickle.loads(func_obj)
         logger.debug("Getting function and modules download finished")
-        loaded_func_all = pickle.loads(func_obj)
         func_download_end_tstamp = time.time()
         self.stats.write('worker_func_download_time', round(func_download_end_tstamp-func_download_start_tstamp, 8))
         logger.debug("Finished getting Function and modules")

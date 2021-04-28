@@ -35,6 +35,8 @@ from lithops.storage.utils import clean_bucket
 from lithops.standalone.standalone import StandaloneHandler
 from lithops.localhost.localhost import LocalhostHandler
 
+from lithops.utils import b64str_to_bytes
+
 
 logger = logging.getLogger(__name__)
 
@@ -229,6 +231,123 @@ def create(name, backend, memory, timeout, config):
     except Exception:
         raise("Unable to upload 'preinstalled-modules' file into {}".format(internal_storage.backend))
 
+def _store_modules(func_key, function_file, module_data):
+    # save function
+    func_path = '/'.join([LITHOPS_TEMP_DIR, func_key, 'mapfunc.py'])
+    os.makedirs(os.path.dirname(func_path), exist_ok=True)
+
+    modules_path = '/'.join([os.path.dirname(func_path), 'modules'])
+    os.makedirs(modules_path, exist_ok=True)
+
+    from shutil import copy
+
+    import pdb;pdb.set_trace()
+    copy(function_file, modules_path)
+
+    if module_data:
+        logger.debug("Writing Function dependencies to local disk")
+
+        for m_filename, m_data in module_data.items():
+            m_path = os.path.dirname(m_filename)
+
+            if len(m_path) > 0 and m_path[0] == "/":
+                m_path = m_path[1:]
+            to_make = os.path.join(modules_path, m_path)
+            try:
+                os.makedirs(to_make)
+            except OSError as e:
+                if e.errno == 17:
+                    pass
+                else:
+                    raise e
+            full_filename = os.path.join(to_make, os.path.basename(m_filename))
+
+            with open(full_filename, 'wb') as fid:
+                fid.write(b64str_to_bytes(m_data))
+
+    logger.debug("Finished storing function and modules")
+    return os.path.dirname(func_path), modules_path
+
+@runtime.command('extend')
+@click.argument('base_runtime_name')
+@click.option('--filepath', required=True, help='full path to the python file with map function')
+@click.option('--function', required=True, help='name of the map function')
+@click.option('--backend', '-b', default=None, help='compute backend')
+@click.option('--memory', default=None, help='memory used by the runtime', type=int)
+@click.option('--timeout', default=None, help='runtime timeout', type=int)
+@click.option('--config', '-c', default=None, help='use json config file')
+@click.option('--exclude_modules', '-e', multiple=True, default=[], help='modules to exclude for docker build')
+def extend(base_runtime_name, filepath, function, backend, memory, timeout, config, exclude_modules):
+    """ Create a serverless runtime """
+    setup_logger(logging.DEBUG)
+    logger.info('Creating new custom lithops runtime: {}'.format(base_runtime_name))
+
+    import os
+    path, function_file_name = os.path.split(filepath)
+
+    function_mod_name = function_file_name
+    if function_mod_name.endswith('.py'):
+        function_mod_name = function_mod_name[:-3]
+
+    mode = SERVERLESS
+    config_ow = {'lithops': {'mode': mode}}
+    if backend:
+        config_ow[mode] = {'backend': backend}
+    config = default_config(config, config_ow)
+
+    storage_config = extract_storage_config(config)
+    internal_storage = InternalStorage(storage_config)
+
+    compute_config = extract_serverless_config(config)
+    compute_handler = ServerlessHandler(compute_config, storage_config)
+    mem = memory if memory else compute_config['runtime_memory']
+    to = timeout if timeout else compute_config['runtime_timeout']
+    runtime_key = compute_handler.get_runtime_key(base_runtime_name, mem)
+    runtime_meta = internal_storage.get_runtime_meta(runtime_key)
+
+    import importlib
+    import sys
+    sys.path.append(path)
+    func_module = importlib.__import__(function_mod_name)
+    func = getattr(func_module, function)
+
+    from lithops.job.serialize import SerializeIndependent, create_module_data
+    serializer = SerializeIndependent(runtime_meta['preinstalls'])
+    _, mod_paths = serializer([func], [], exclude_modules)
+    module_data = create_module_data(mod_paths)
+
+    import pickle
+    import hashlib
+
+    runtime_tag = hashlib.md5(open(filepath,'rb').read()).hexdigest()[:16]
+
+    ext_runtime_name = "{}:{}".format(base_runtime_name.rsplit(":", 1)[0], runtime_tag)
+    ext_runtime_key = compute_handler.get_runtime_key(ext_runtime_name, mem)
+
+    func_path, modules_path = _store_modules(ext_runtime_key, filepath, module_data)
+
+    ext_docker_file = '/'.join([modules_path, "Dockerfile"])
+
+    # Generate Dockerfile extended with function dependencies and function
+    with open(ext_docker_file, 'w') as df:
+        df.write('\n'.join([
+                        'FROM {}'.format(base_runtime_name),
+                        'ENV PYTHONPATH={}:${}'.format(func_path,'PYTHONPATH'), # set python path to point to dependencies folder
+                        'COPY . {}'.format(func_path)]))
+
+    # Build new extended runtime tagged by function hash
+    cwd = os.getcwd()
+    os.chdir(modules_path)
+    compute_handler.build_runtime(ext_runtime_name, ext_docker_file)
+    os.chdir(cwd)
+
+    ext_runtime_meta = compute_handler.create_runtime(ext_runtime_name, mem, timeout=to)
+    ext_runtime_meta['map_func_mod'] = f'{function_mod_name}'
+    ext_runtime_meta['map_func'] = f'{function}'
+    logger.info("==============================================")
+    logger.info(f"Extended runtime: {ext_runtime_name}")
+    logger.info("==============================================")
+    internal_storage.put_runtime_meta(ext_runtime_key, ext_runtime_meta)
 
 @runtime.command('build')
 @click.argument('name')

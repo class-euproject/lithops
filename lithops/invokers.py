@@ -285,6 +285,9 @@ class ServerlessInvoker(Invoker):
                    'runtime_name': job.runtime_name,
                    'runtime_memory': job.runtime_memory}
 
+        if hasattr(job, 'map_func_meta'):
+            payload['map_func_meta'] = job.map_func_meta
+
         # do the invocation
         start = time.time()
         logger.info(f' A_INVOKE_CALL_{call_id} ')
@@ -479,6 +482,45 @@ class CustomizedRuntimeInvoker(ServerlessInvoker):
     map function and modules to optimize performance in real time use cases by avoiding repeated data transfers from storage to
     action containers on each execution
     """
+    def select_runtime(self, job_id, runtime_memory):
+        """
+        Return the runtime metadata
+        """
+        if not runtime_memory:
+            runtime_memory = self.config['serverless']['runtime_memory']
+        timeout = self.config['serverless']['runtime_timeout']
+
+        log_msg = ('ExecutorID {} | JobID {} - Selected Runtime: {} - {}MB '
+                   .format(self.executor_id, job_id, self.runtime_name, runtime_memory))
+        logger.info(log_msg)
+        if not self.log_active:
+            print(log_msg, end='')
+
+        runtime_key = self.compute_handler.get_runtime_key(self.runtime_name, runtime_memory)
+        runtime_meta = self.internal_storage.get_runtime_meta(runtime_key)
+        if not runtime_meta:
+            logger.debug('Runtime {} with {}MB is not yet installed'.format(self.runtime_name, runtime_memory))
+            if not self.log_active:
+                print('(Installing...)')
+            runtime_meta = self.compute_handler.create_runtime(self.runtime_name, runtime_memory, timeout)
+            if self.config['serverless']['map_func_mod']:
+                runtime_meta['map_func_mod'] = self.config['serverless']['map_func_mod']
+                runtime_meta['map_func'] = self.config['serverless']['map_func']
+
+            self.internal_storage.put_runtime_meta(runtime_key, runtime_meta)
+        else:
+            if not self.log_active:
+                print()
+
+        py_local_version = version_str(sys.version_info)
+        py_remote_version = runtime_meta['python_ver']
+
+        if py_local_version != py_remote_version:
+            raise Exception(("The indicated runtime '{}' is running Python {} and it "
+                             "is not compatible with the local Python version {}")
+                            .format(self.runtime_name, py_remote_version, py_local_version))
+
+        return runtime_meta
 
     def run(self, job):
         """
@@ -529,10 +571,10 @@ class CustomizedRuntimeInvoker(ServerlessInvoker):
 
         base_docker_image = self.runtime_name
         uuid = job.ext_runtime_uuid
-        ext_runtime_name = "{}:{}".format(base_docker_image.rsplit(":", 1)[0], uuid)
+#        ext_runtime_name = "{}:{}".format(base_docker_image.rsplit(":", 1)[0], uuid)
 
         # update job with new extended runtime name
-        self.runtime_name = ext_runtime_name
+#        self.runtime_name = ext_runtime_name
 
         runtime_key = self.compute_handler.get_runtime_key(self.runtime_name, runtime_memory)
         runtime_meta = None
@@ -541,51 +583,51 @@ class CustomizedRuntimeInvoker(ServerlessInvoker):
         
         if not runtime_meta:
             timeout = self.config['lithops']['runtime_timeout']
-            logger.debug('Creating runtime: {}, memory: {}MB'.format(ext_runtime_name, runtime_memory))
+            logger.debug('Creating runtime: {}, memory: {}MB'.format(self.runtime_name, runtime_memory))
 
-            def _docker_image_exist():
-                import requests
+#            def _docker_image_exist():
+#                import requests
 
-                base_docker_image_split = base_docker_image.rsplit(":", 1)[0].split('/')
+#                base_docker_image_split = base_docker_image.rsplit(":", 1)[0].split('/')
 
-                if len(base_docker_image_split) > 2: #very rough check that its a private registry
-                    registry = f"http://{base_docker_image_split[0]}/v2"#'http://192.168.7.41:5000/v2'
-                    url = f"{registry}/{base_docker_image_split[1]}/{base_docker_image_split[2]}/tags/list"
-                    res = requests.get(url, verify=False)
-                    if res.ok:
-                        tags = res.json().get('tags')
-                        if uuid in tags:
-                            return True
-                else:
-                    registry = 'https://index.docker.io/v1/repositories' #default - docker hub
-                    url = f"{registry}/{base_docker_image_split[1]}/{base_docker_image_split[2]}/tags"
-                    res = requests.get(url, verify=False)
-                    if res.ok:
-                        tags = res.json().get('tags')
-                        return any(tag['name'] == uuid for tag in tags)
+#                if len(base_docker_image_split) > 2: #very rough check that its a private registry
+#                    registry = f"http://{base_docker_image_split[0]}/v2"#'http://192.168.7.41:5000/v2'
+#                    url = f"{registry}/{base_docker_image_split[1]}/{base_docker_image_split[2]}/tags/list"
+#                    res = requests.get(url, verify=False)
+#                    if res.ok:
+#                        tags = res.json().get('tags')
+#                        if uuid in tags:
+#                            return True
+#                else:
+#                    registry = 'https://index.docker.io/v1/repositories' #default - docker hub
+#                    url = f"{registry}/{base_docker_image_split[1]}/{base_docker_image_split[2]}/tags"
+#                    res = requests.get(url, verify=False)
+#                    if res.ok:
+#                        tags = res.json().get('tags')
+#                        return any(tag['name'] == uuid for tag in tags)
 
-            if not _docker_image_exist():
-                self._store_func_and_modules(*job.customized_runtime_meta)
-                runtime_temorary_directory = '/'.join([LITHOPS_TEMP_DIR, os.path.dirname(job.func_key)])
-                modules_path = '/'.join([runtime_temorary_directory, 'modules'])
+#            if not _docker_image_exist():
+#                self._store_func_and_modules(*job.customized_runtime_meta)
+#                runtime_temorary_directory = '/'.join([LITHOPS_TEMP_DIR, os.path.dirname(job.func_key)])
+#                modules_path = '/'.join([runtime_temorary_directory, 'modules'])
 
-                ext_docker_file = '/'.join([runtime_temorary_directory, "Dockerfile"])
+#                ext_docker_file = '/'.join([runtime_temorary_directory, "Dockerfile"])
 
                 # Generate Dockerfile extended with function dependencies and function
-                with open(ext_docker_file, 'w') as df:
-                    df.write('\n'.join([
-                        'FROM {}'.format(base_docker_image),
-                        'ENV PYTHONPATH={}:${}'.format(modules_path,'PYTHONPATH'), # set python path to point to dependencies folder
-                        'COPY . {}'.format(runtime_temorary_directory)
-                    ]))
+#                with open(ext_docker_file, 'w') as df:
+#                    df.write('\n'.join([
+#                        'FROM {}'.format(base_docker_image),
+#                        'ENV PYTHONPATH={}:${}'.format(modules_path,'PYTHONPATH'), # set python path to point to dependencies folder
+#                        'COPY . {}'.format(runtime_temorary_directory)
+#                    ]))
 
                 # Build new extended runtime tagged by function hash
-                cwd = os.getcwd()
-                os.chdir(runtime_temorary_directory)
-                self.compute_handler.build_runtime(ext_runtime_name, ext_docker_file)
-                os.chdir(cwd)
+#                cwd = os.getcwd()
+#                os.chdir(runtime_temorary_directory)
+#                self.compute_handler.build_runtime(ext_runtime_name, ext_docker_file)
+#                os.chdir(cwd)
 
-            runtime_meta = self.compute_handler.create_runtime(ext_runtime_name, runtime_memory, timeout=timeout)
+            runtime_meta = self.compute_handler.create_runtime(self.runtime_name, runtime_memory, timeout=timeout)
 #            if self.storage_config['backend'] != "storageless":
             self.internal_storage.put_runtime_meta(runtime_key, runtime_meta)
         else:

@@ -75,6 +75,7 @@ def function_handler(event):
     data_key = event['data_key']
     data_byte_range = event['data_byte_range']
     data_object = event['data_object']
+    map_func_meta = event.get('map_func_meta')
 
     storage_config = extract_storage_config(config)
     internal_storage = InternalStorage(storage_config)
@@ -126,6 +127,7 @@ def function_handler(event):
                             'data_key': data_key,
                             'data_byte_range': data_byte_range,
                             'data_object': data_object,
+                            'map_func_meta': map_func_meta,
                             'output_key': create_output_key(JOBS_PREFIX, executor_id, job_id, call_id),
                             'stats_filename': jobrunner_stats_filename}
 
@@ -220,14 +222,14 @@ class CallStatus:
         self.response = {'exception': False}
 
     def send(self, event_type):
-        logger.info(f"sending event {event_type}")
+        print(f"Sending event {event_type}")
         self.response['type'] = event_type
         if self.store_status:
             if self.rabbitmq_monitor:
                 self._send_status_rabbitmq()
             if not self.rabbitmq_monitor:# or event_type == '__end__':
                 self._send_status_os()
-        logger.info(f"done sending event {event_type}")
+        print(f"done sending event {event_type}")
 
     def _send_status_os(self):
         """
