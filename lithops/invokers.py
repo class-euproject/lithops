@@ -290,9 +290,9 @@ class ServerlessInvoker(Invoker):
 
         # do the invocation
         start = time.time()
-        logger.info(f' A_INVOKE_CALL_{call_id} ')
+        logger.debug(f' A_INVOKE_CALL_{call_id} ')
         activation_id = self.compute_handler.invoke(job.runtime_name, job.runtime_memory, payload)
-        logger.info(f' A_INVOKE_BACK_{call_id}_{activation_id} ')
+        logger.debug(f' A_INVOKE_BACK_{call_id}_{activation_id} ')
         roundtrip = time.time() - start
         resp_time = format(round(roundtrip, 3), '.3f')
 
@@ -333,7 +333,7 @@ class ServerlessInvoker(Invoker):
         """
         Run a job described in job_description
         """
-        logger.info("in invoker.run")
+        logger.debug("in invoker.run")
 
         job.runtime_name = self.runtime_name
 
