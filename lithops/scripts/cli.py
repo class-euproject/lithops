@@ -241,7 +241,6 @@ def _store_modules(func_key, function_file, module_data):
 
     from shutil import copy
 
-    import pdb;pdb.set_trace()
     copy(function_file, modules_path)
 
     if module_data:

@@ -37,3 +37,28 @@ Warning: to protect your privacy, use a private docker registry instead of publi
 serverless:
     customized_runtime: True
 ```
+
+To optimize, extend runtime manually with:
+```
+lithops runtime extend [OPTIONS] BASE_RUNTIME_NAME
+```
+e.g.
+```
+lithops runtime extend <DOCKER_REGISTRY>/<USER>/lithops_runtime:latest --filepath full_path/map_funciton_file.py --function map_function_name
+```
+
+Notice lines in output log: 
+```[INFO] lithops.scripts.cli -- Extended runtime: <DOCKER_REGISTRY>/<USER>/lithops_runtime:<UNIQUE_TAG>```
+
+In case map function publishes result via 3rd party, e.g. mqtt broker, in order to optimize performance and avoid interaction with object storage update configuration with:
+```
+lithops:
+    rabbitmq_monitor: True #requires rabbitmq section update as well
+    storage: storageless
+
+serverless:
+    customized_runtime: True
+    map_func_mod: map_funciton_file
+    map_func: map_function_name
+    runtime: <DOCKER_REGISTRY>/<USER>/lithops_runtime:<UNIQUE_TAG>
+```
