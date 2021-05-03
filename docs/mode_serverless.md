@@ -38,7 +38,7 @@ serverless:
     customized_runtime: True
 ```
 
-To optimize, extend runtime manually with:
+Use lithops cli to extend runtime:
 ```
 lithops runtime extend [OPTIONS] BASE_RUNTIME_NAME
 ```
