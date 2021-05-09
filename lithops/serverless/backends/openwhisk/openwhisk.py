@@ -122,8 +122,10 @@ class OpenWhiskBackend:
 
         with open(openwhisk_config.FH_ZIP_LOCATION, "rb") as action_zip:
             action_bin = action_zip.read()
+
+        kind = self.ow_config.get('kind')
         self.cf_client.create_action(self.package, action_name, docker_image_name, code=action_bin,
-                                     memory=memory, is_binary=True, timeout=timeout*1000)
+                                     memory=memory, is_binary=True, timeout=timeout*1000, kind=kind)
         self._delete_function_handler_zip()
         return self._generate_runtime_meta(docker_image_name, memory)
 

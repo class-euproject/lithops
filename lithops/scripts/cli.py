@@ -341,6 +341,113 @@ def extend(base_runtime_name, filepath, function, backend, memory, timeout, conf
     os.chdir(cwd)
 
     ext_runtime_meta = compute_handler.create_runtime(ext_runtime_name, mem, timeout=to)
+    ext_meta = runtime_meta.get('ext_meta', {'map_func_mod': [], 'map_func': []})
+
+    ext_meta['map_func_mod'].append(function_mod_name)
+    ext_meta['map_func'].append(function)
+
+    ext_runtime_meta['ext_meta'] = ext_meta
+    
+    ext_runtime_meta['map_func_mod'] = f'{function_mod_name}'
+    ext_runtime_meta['map_func'] = f'{function}'
+    logger.info("==============================================")
+    logger.info(f"Extended runtime: {ext_runtime_name}")
+    logger.info("==============================================")
+    internal_storage.put_runtime_meta(ext_runtime_key, ext_runtime_meta)
+
+@runtime.command('extend')
+@click.argument('base_runtime_name')
+@click.option('--filepath', required=True, help='full path to the python file with map function')
+@click.option('--function', required=True, help='name of the map function')
+@click.option('--backend', '-b', default=None, help='compute backend')
+@click.option('--memory', default=None, help='memory used by the runtime', type=int)
+@click.option('--timeout', default=None, help='runtime timeout', type=int)
+@click.option('--config', '-c', default=None, help='use json config file')
+@click.option('--exclude_modules', '-e', multiple=True, default=[], help='modules to exclude for docker build')
+def extend(base_runtime_name, filepath, function, backend, memory, timeout, config, exclude_modules):
+    """ Create a serverless runtime """
+    setup_logger(logging.DEBUG)
+    logger.info('Creating new custom lithops runtime: {}'.format(base_runtime_name))
+
+    import os
+    path, function_file_name = os.path.split(filepath)
+
+    function_mod_name = function_file_name
+    if function_mod_name.endswith('.py'):
+        function_mod_name = function_mod_name[:-3]
+
+    mode = SERVERLESS
+    config_ow = {'lithops': {'mode': mode}}
+    if backend:
+        config_ow[mode] = {'backend': backend}
+    config = default_config(config, config_ow)
+
+    storage_config = extract_storage_config(config)
+    internal_storage = InternalStorage(storage_config)
+
+    compute_config = extract_serverless_config(config)
+    compute_handler = ServerlessHandler(compute_config, storage_config)
+    mem = memory if memory else compute_config['runtime_memory']
+    to = timeout if timeout else compute_config['runtime_timeout']
+
+    kind = compute_config[compute_config['backend']].get('kind')
+    if kind:
+        runtime_key = compute_handler.get_runtime_key(kind, mem)
+    else:
+        runtime_key = compute_handler.get_runtime_key(base_runtime_name, mem)
+
+    runtime_meta = internal_storage.get_runtime_meta(runtime_key)
+
+    import importlib
+    import sys
+    sys.path.append(path)
+    func_module = importlib.__import__(function_mod_name)
+    func = getattr(func_module, function)
+
+    from lithops.job.serialize import SerializeIndependent, create_module_data
+    serializer = SerializeIndependent(runtime_meta['preinstalls'])
+    _, mod_paths = serializer([func], [], exclude_modules)
+    module_data = create_module_data(mod_paths)
+
+    import pickle
+    import hashlib
+
+    if not kind:
+        runtime_tag = hashlib.md5(open(filepath,'rb').read()).hexdigest()[:16]
+        ext_runtime_name = "{}:{}".format(base_runtime_name.rsplit(":", 1)[0], runtime_tag)
+        ext_runtime_image_name = ext_runtime_name
+        ext_runtime_key = compute_handler.get_runtime_key(ext_runtime_name, mem)
+    else:
+        ext_runtime_name = kind
+        ext_runtime_image_name = base_runtime_name
+        ext_runtime_key = runtime_key
+
+    func_path, modules_path = _store_modules(ext_runtime_key, filepath, module_data)
+
+    ext_docker_file = '/'.join([modules_path, "Dockerfile"])
+
+    # Generate Dockerfile extended with function dependencies and function
+    with open(ext_docker_file, 'w') as df:
+        df.write('\n'.join([
+                        'FROM {}'.format(base_runtime_name),
+                        'ENV PYTHONPATH={}:${}'.format(func_path,'PYTHONPATH'), # set python path to point to dependencies folder
+                        'COPY . {}'.format(func_path)]))
+
+    # Build new extended runtime tagged by function hash
+    cwd = os.getcwd()
+    os.chdir(modules_path)
+
+    compute_handler.build_runtime(ext_runtime_image_name, ext_docker_file)
+    os.chdir(cwd)
+
+    ext_runtime_meta = compute_handler.create_runtime(ext_runtime_name, mem, timeout=to)
+    ext_meta = runtime_meta.get('ext_meta', {'map_func_mod': [], 'map_func': []})
+
+    ext_meta['map_func_mod'].append(function_mod_name)
+    ext_meta['map_func'].append(function)
+
+    ext_runtime_meta['ext_meta'] = ext_meta
+
     ext_runtime_meta['map_func_mod'] = f'{function_mod_name}'
     ext_runtime_meta['map_func'] = f'{function}'
     logger.info("==============================================")

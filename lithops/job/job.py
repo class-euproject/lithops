@@ -219,7 +219,10 @@ def _create_fast_job(config, internal_storage, executor_id, job_id, func,
     uuid = hashlib.md5(open(function_file,'rb').read()).hexdigest()[:16]
     func_key = create_func_key(JOBS_PREFIX, uuid, "")
 
-    job.map_func_meta = {'map_func_mod': runtime_meta['map_func_mod'], 'map_func': runtime_meta['map_func']} 
+    map_func_mod = func.__module__
+    map_func = func.__name__
+    if map_func_mod in runtime_meta['ext_meta']['map_func_mod'] and map_func in runtime_meta['ext_meta']['map_func']:
+        job.map_func_meta = {'map_func_mod': map_func_mod, 'map_func': map_func} 
 
 #        _store_func_and_modules(func_key, func_str, module_data)
 
