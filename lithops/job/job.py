@@ -64,7 +64,8 @@ def create_map_job(config, internal_storage, executor_id, job_id, map_function,
         host_job_meta['host_job_create_partitions_time'] = round(time.time()-create_partitions_start, 6)
     # ########
 
-    if 'map_func_mod' in runtime_meta:
+#    import pdb;pdb.set_trace()
+    if config['serverless'].get('customized_runtime') and 'map_func_mod' in runtime_meta:
         job = _create_fast_job(config=config,
                       internal_storage=internal_storage,
                       executor_id=executor_id,
@@ -160,6 +161,7 @@ def _create_fast_job(config, internal_storage, executor_id, job_id, func,
     :rtype:  list of futures.
     """
     log_level = logger.getEffectiveLevel() != logging.WARNING
+    logger.info("in _create_fast_job")
 
     ext_env = {} if extra_env is None else extra_env.copy()
     if ext_env:
@@ -221,14 +223,17 @@ def _create_fast_job(config, internal_storage, executor_id, job_id, func,
 
     map_func_mod = func.__module__
     map_func = func.__name__
-    if map_func_mod in runtime_meta['ext_meta']['map_func_mod'] and map_func in runtime_meta['ext_meta']['map_func']:
+
+#    if map_func_mod in runtime_meta['ext_meta']['map_func_mod'] and map_func in runtime_meta['ext_meta']['map_func']:
+    if config[mode].get('customized_runtime'):
         job.map_func_meta = {'map_func_mod': map_func_mod, 'map_func': map_func} 
+        logger.info(f'job.map_func_meta: {job.map_func_meta}')
 
 #        _store_func_and_modules(func_key, func_str, module_data)
 
     job.ext_runtime_uuid = uuid
 
-    logger.info("Finished uploading function and data")
+    logger.info("Finished uploading function and data!")
 
     job.func_key = func_key
     func_upload_end = time.time()
@@ -317,7 +322,7 @@ def _create_job(config, internal_storage, executor_id, job_id, func,
     serializer = SerializeIndependent(runtime_meta['preinstalls'])
 
     func_iterdata = [func]
-    if not internal_storage.backend == 'storageless':
+    if not config[mode].get('customized_runtime'):
         func_iterdata.extend(iterdata)
 
     func_and_data_ser, mod_paths = serializer(func_iterdata, inc_modules, exc_modules)
@@ -356,7 +361,7 @@ def _create_job(config, internal_storage, executor_id, job_id, func,
 #    import pdb;pdb.set_trace()
     data_upload_start = time.time()
 
-    if not internal_storage.backend == 'storageless': 
+    if not config[mode].get('customized_runtime'): 
         data_bytes, data_ranges = utils.agg_data(data_strs)
         job.data_ranges = data_ranges
         internal_storage.put_data(data_key, data_bytes)

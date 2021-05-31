@@ -224,6 +224,7 @@ class FunctionExecutor:
         job_id = self._create_job_id('M')
         self.last_call = 'map'
 
+#        import pdb;pdb.set_trace()
         runtime_meta = self.invoker.select_runtime(job_id, runtime_memory)
 
         job = create_map_job(self.config, self.internal_storage,

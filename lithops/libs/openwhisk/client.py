@@ -82,9 +82,11 @@ class OpenWhiskClient:
         limits['timeout'] = timeout
         data['limits'] = limits
 
-        cfexec['kind'] = kind
-        if kind == 'blackbox':
+        if not kind:
             cfexec['image'] = image_name
+            cfexec['kind'] = 'blackbox'
+        else:
+            cfexec['kind'] = kind
         cfexec['binary'] = is_binary
         cfexec['code'] = base64.b64encode(code).decode("utf-8") if is_binary else code
         data['exec'] = cfexec
