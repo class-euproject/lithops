@@ -274,9 +274,10 @@ def _store_modules(func_key, function_file, module_data):
 @click.option('--memory', default=None, help='memory used by the runtime', type=int)
 @click.option('--timeout', default=None, help='runtime timeout', type=int)
 @click.option('--config', '-c', default=None, help='use json config file')
-@click.option('--exclude_modules', '-e', multiple=True, default=[], help='modules to exclude for docker build')
+@click.option('--exclude_modules', multiple=True, default=[], help='modules to exclude for docker build')
+@click.option('--include_modules', multiple=True, default=[], help='modules to include for docker build')
 @click.option('--image', '-i', default=None, help='docker image name, specified when runtime derrived from ow kind')
-def extend(base_runtime_name, filepath, function, memory, timeout, config, exclude_modules, image):
+def extend(base_runtime_name, filepath, function, memory, timeout, config, exclude_modules, image, include_modules):
     """ Create a serverless runtime """
     setup_logger(logging.DEBUG)
     logger.info('Extending custom lithops runtime: {}'.format(base_runtime_name))
@@ -298,7 +299,6 @@ def extend(base_runtime_name, filepath, function, memory, timeout, config, exclu
     to = timeout if timeout else compute_config['runtime_timeout']
 
     runtime_key = compute_handler.get_runtime_key(base_runtime_name, mem)
-    import pdb;pdb.set_trace()
     runtime_meta = internal_storage.get_runtime_meta(runtime_key)
     kind = compute_config[compute_config['backend']].get('kind')
     import importlib
@@ -325,7 +325,10 @@ def extend(base_runtime_name, filepath, function, memory, timeout, config, exclu
     func = getattr(func_module, function)
 
     serializer = SerializeIndependent(runtime_meta['preinstalls'])
-    _, mod_paths = serializer([func], [], exclude_modules)
+    _, mod_paths = serializer([func], include_modules, exclude_modules)
+    for inc_mod_name in include_modules:
+        mod_paths.add(importlib.__import__(inc_mod_name).__path__[0])
+
     module_data = create_module_data(mod_paths)
 
     func_path, modules_path = _store_modules(ext_runtime_key, filepath, module_data)
