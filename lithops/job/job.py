@@ -325,6 +325,7 @@ def _create_job(config, internal_storage, executor_id, job_id, func,
     if not config[mode].get('customized_runtime'):
         func_iterdata.extend(iterdata)
 
+#    import pdb;pdb.set_trace()
     func_and_data_ser, mod_paths = serializer(func_iterdata, inc_modules, exc_modules)
 
     data_strs = func_and_data_ser[1:]

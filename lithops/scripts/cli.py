@@ -299,6 +299,7 @@ def extend(base_runtime_name, filepath, function, memory, timeout, config, exclu
     to = timeout if timeout else compute_config['runtime_timeout']
 
     runtime_key = compute_handler.get_runtime_key(base_runtime_name, mem)
+#    import pdb;pdb.set_trace()
     runtime_meta = internal_storage.get_runtime_meta(runtime_key)
     kind = compute_config[compute_config['backend']].get('kind')
     import importlib
